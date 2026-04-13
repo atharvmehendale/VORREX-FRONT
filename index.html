@@ -490,192 +490,223 @@
     </div>
 
     <script>
-        let chats = [];
-        let currentChatId = null;
-        let isDarkMode = true;
-        let isWaiting = false;
+    let chats = [];
+    let currentChatId = null;
+    let isDarkMode = true;
+    let isWaiting = false;
 
-        const replies = [
-            { content: "Understood. Based on the available data, the most likely conclusion points toward a consolidation phase. The key indicators — volume, velocity, and variance — all trend in the same direction.", score: 94, statement: "Synthesized from multiple sources" },
-            { content: "The evidence here is reasonably clear. I'd recommend approaching this in three stages: first establish a baseline, then run a controlled test, then scale what works. Skipping the middle step is where most efforts fail.", score: 91, statement: "Cross-verified against current data" },
-            { content: "There are two competing interpretations of this. The first is more intuitive but less accurate over time. The second requires more upfront work but holds up under edge cases. I'd lean toward the second.", score: 88, statement: "Consistent across reference points" },
-            { content: "The short answer is yes, but the conditions matter significantly. Under normal circumstances this holds. When the underlying assumptions shift, the conclusion changes — so watch for those inflection points.", score: 87, statement: "Verified with high confidence" }
-        ];
-        let replyIndex = 0;
+    // ================== CONFIGURE THESE TWO LINES ==================
+    const API_BASE_URL = "https://vorrex.onrender.com";   // ← CHANGE THIS
+    const VORREX_API_KEY = "vorrex-cool-2026";               // ← CHANGE THIS (same as on Render)
+    // ================================================================
 
-        function renderSidebar() {
-            const container = document.getElementById('sidebar-content');
-            container.innerHTML = `<div class="sidebar-label">Recent</div>`;
-            chats.forEach(chat => {
-                const div = document.createElement('div');
-                div.className = `chat-item${chat.id === currentChatId ? ' active' : ''}`;
-                div.textContent = chat.title;
-                div.onclick = () => switchChat(chat.id);
-                container.appendChild(div);
-            });
+    function renderSidebar() {
+        const container = document.getElementById('sidebar-content');
+        container.innerHTML = `<div class="sidebar-label">Recent</div>`;
+        chats.forEach(chat => {
+            const div = document.createElement('div');
+            div.className = `chat-item${chat.id === currentChatId ? ' active' : ''}`;
+            div.textContent = chat.title;
+            div.onclick = () => switchChat(chat.id);
+            container.appendChild(div);
+        });
+    }
+
+    function switchChat(id) {
+        currentChatId = id;
+        renderSidebar();
+        renderMessages();
+        closeSidebar();
+    }
+
+    function renderMessages() {
+        const container = document.getElementById('messages-container');
+        const chat = chats.find(c => c.id === currentChatId);
+        document.getElementById('chat-header-title').textContent = chat ? chat.title : "New conversation";
+        container.innerHTML = '';
+
+        if (!chat || chat.messages.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.innerHTML = `<h1>What do you want to know?</h1><p>Ask anything — I'll give you the most accurate answer I can.</p>`;
+            container.appendChild(empty);
+            return;
         }
 
-        function switchChat(id) {
-            currentChatId = id;
+        chat.messages.forEach(msg => appendMessage(msg, false));
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function appendMessage(msg, animate = true) {
+        const container = document.getElementById('messages-container');
+        const empty = container.querySelector('.empty-state');
+        if (empty) empty.remove();
+
+        const row = document.createElement('div');
+        row.className = `message-row ${msg.role}`;
+        if (!animate) row.style.animation = 'none';
+
+        const inner = document.createElement('div');
+        inner.className = 'message-inner';
+
+        if (msg.role === 'assistant') {
+            inner.innerHTML = `
+                <div class="role-label">VORREX</div>
+                <div class="message-content">${msg.content.replace(/\n/g, '<br>')}</div>
+                <div class="assistant-meta">
+                    <span class="score-badge">● ${msg.score}%</span>
+                    <span class="confidence-stmt">${msg.statement}</span>
+                </div>`;
+        } else {
+            inner.innerHTML = `<div class="user-bubble">${msg.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+        }
+
+        row.appendChild(inner);
+        container.appendChild(row);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function showTyping() {
+        const container = document.getElementById('messages-container');
+        const row = document.createElement('div');
+        row.className = 'message-row assistant';
+        row.id = 'typing-row';
+        row.style.animation = 'none';
+        row.innerHTML = `
+            <div class="message-inner">
+                <div class="role-label">VORREX</div>
+                <div class="typing-indicator"><span></span><span></span><span></span></div>
+            </div>`;
+        container.appendChild(row);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function removeTyping() {
+        const t = document.getElementById('typing-row');
+        if (t) t.remove();
+    }
+
+    // ================== REAL SEND MESSAGE FUNCTION ==================
+    async function sendMessage() {
+        if (isWaiting) return;
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        let chat = chats.find(c => c.id === currentChatId);
+        if (!chat) {
+            chat = { id: Date.now(), title: "New conversation", messages: [] };
+            chats.unshift(chat);
+            currentChatId = chat.id;
+            renderSidebar();
+        }
+
+        chat.messages.push({ role: 'user', content: text });
+        appendMessage({ role: 'user', content: text });
+
+        if (chat.title === "New conversation" && chat.messages.length === 1) {
+            chat.title = text.length > 32 ? text.slice(0, 32) + '…' : text;
+            document.getElementById('chat-header-title').textContent = chat.title;
+            renderSidebar();
+        }
+
+        input.value = '';
+        input.style.height = 'auto';
+        isWaiting = true;
+        showTyping();
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/ask`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": VORREX_API_KEY
+                },
+                body: JSON.stringify({
+                    question: text,
+                    history: []   // Later we can send full history for better context
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            removeTyping();
+            const assistantMsg = {
+                role: 'assistant',
+                content: data.answer,
+                score: data.confidence_score,
+                statement: data.confidence_statement || "Processed successfully"
+            };
+
+            chat.messages.push(assistantMsg);
+            appendMessage(assistantMsg);
+
+        } catch (error) {
+            console.error("API Error:", error);
+            removeTyping();
+            appendMessage({
+                role: 'assistant',
+                content: "Sorry, I couldn't connect to the server right now. Please check your internet or try again later.",
+                score: 50,
+                statement: "Connection issue"
+            });
+        } finally {
+            isWaiting = false;
+        }
+    }
+    // ================================================================
+
+    function closeSidebar() {
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('overlay').classList.remove('visible');
+        }
+    }
+
+    window.addEventListener('load', () => {
+        renderSidebar();
+        renderMessages();
+
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('dark', isDarkMode);
+            document.body.classList.toggle('light', !isDarkMode);
+        });
+
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+
+        document.getElementById('message-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        document.getElementById('message-input').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+        });
+
+        document.getElementById('new-chat-btn').addEventListener('click', () => {
+            const newChat = { id: Date.now(), title: "New conversation", messages: [] };
+            chats.unshift(newChat);
+            currentChatId = newChat.id;
             renderSidebar();
             renderMessages();
             closeSidebar();
-        }
-
-        function renderMessages() {
-            const container = document.getElementById('messages-container');
-            const chat = chats.find(c => c.id === currentChatId);
-            document.getElementById('chat-header-title').textContent = chat ? chat.title : "New conversation";
-            container.innerHTML = '';
-
-            if (!chat || chat.messages.length === 0) {
-                const empty = document.createElement('div');
-                empty.className = 'empty-state';
-                empty.innerHTML = `<h1>What do you want to know?</h1><p>Ask anything — I'll give you the most accurate answer I can.</p>`;
-                container.appendChild(empty);
-                return;
-            }
-
-            chat.messages.forEach(msg => appendMessage(msg, false));
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function appendMessage(msg, animate = true) {
-            const container = document.getElementById('messages-container');
-            const empty = container.querySelector('.empty-state');
-            if (empty) empty.remove();
-
-            const row = document.createElement('div');
-            row.className = `message-row ${msg.role}`;
-            if (!animate) row.style.animation = 'none';
-
-            const inner = document.createElement('div');
-            inner.className = 'message-inner';
-
-            if (msg.role === 'assistant') {
-                inner.innerHTML = `
-                    <div class="role-label">VORREX</div>
-                    <div class="message-content">${msg.content.replace(/\n/g, '<br>')}</div>
-                    <div class="assistant-meta">
-                        <span class="score-badge">● ${msg.score}%</span>
-                        <span class="confidence-stmt">${msg.statement}</span>
-                    </div>`;
-            } else {
-                inner.innerHTML = `<div class="user-bubble">${msg.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
-            }
-
-            row.appendChild(inner);
-            container.appendChild(row);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function showTyping() {
-            const container = document.getElementById('messages-container');
-            const row = document.createElement('div');
-            row.className = 'message-row assistant';
-            row.id = 'typing-row';
-            row.style.animation = 'none';
-            row.innerHTML = `
-                <div class="message-inner">
-                    <div class="role-label">VORREX</div>
-                    <div class="typing-indicator"><span></span><span></span><span></span></div>
-                </div>`;
-            container.appendChild(row);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function removeTyping() {
-            const t = document.getElementById('typing-row');
-            if (t) t.remove();
-        }
-
-        function sendMessage() {
-            if (isWaiting) return;
-            const input = document.getElementById('message-input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            
-            let chat = chats.find(c => c.id === currentChatId)
-
- if (!chat) {
-    chat = { id: Date.now(), title: "New conversation", messages: [] };
-    chats.unshift(chat);
-    currentChatId = chat.id;
-    renderSidebar();
-}
-            chat.messages.push({ role: 'user', content: text });
-            appendMessage({ role: 'user', content: text });
-
-            if (chat.title === "New conversation" && chat.messages.length === 1) {
-                chat.title = text.length > 32 ? text.slice(0, 32) + '…' : text;
-                document.getElementById('chat-header-title').textContent = chat.title;
-                renderSidebar();
-            }
-
-            input.value = '';
-            input.style.height = 'auto';
-            isWaiting = true;
-            showTyping();
-
-            setTimeout(() => {
-                removeTyping();
-                const reply = replies[replyIndex % replies.length];
-                replyIndex++;
-                const assistantMsg = { role: 'assistant', ...reply };
-                chat.messages.push(assistantMsg);
-                appendMessage(assistantMsg);
-                isWaiting = false;
-            }, 900 + Math.random() * 700);
-        }
-
-        function closeSidebar() {
-            if (window.innerWidth <= 768) {
-                document.getElementById('sidebar').classList.remove('open');
-                document.getElementById('overlay').classList.remove('visible');
-            }
-        }
-
-        window.addEventListener('load', () => {
-            renderSidebar();
-            renderMessages();
-
-            document.getElementById('theme-toggle').addEventListener('click', () => {
-                isDarkMode = !isDarkMode;
-                document.body.classList.toggle('dark', isDarkMode);
-                document.body.classList.toggle('light', !isDarkMode);
-            });
-
-            document.getElementById('send-button').addEventListener('click', sendMessage);
-
-            document.getElementById('message-input').addEventListener('keydown', e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
-
-            document.getElementById('message-input').addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = Math.min(this.scrollHeight, 160) + 'px';
-            });
-
-            document.getElementById('new-chat-btn').addEventListener('click', () => {
-                const newChat = { id: Date.now(), title: "New conversation", messages: [] };
-                chats.unshift(newChat);
-                currentChatId = newChat.id;
-                renderSidebar();
-                renderMessages();
-                closeSidebar();
-            });
-
-            document.getElementById('hamburger').addEventListener('click', () => {
-                document.getElementById('sidebar').classList.toggle('open');
-                document.getElementById('overlay').classList.toggle('visible');
-            });
-
-            document.getElementById('overlay').addEventListener('click', closeSidebar);
         });
-    </script>
+
+        document.getElementById('hamburger').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('overlay').classList.toggle('visible');
+        });
+
+        document.getElementById('overlay').addEventListener('click', closeSidebar);
+    });
+</script>
 </body>
 </html>

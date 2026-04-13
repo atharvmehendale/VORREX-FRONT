@@ -586,7 +586,7 @@
         if (t) t.remove();
     }
 
-// ================== REAL API CALL USING FETCH ==================
+// ================== UPDATED SEND MESSAGE WITH HISTORY ==================
 async function sendMessage() {
     if (isWaiting) return;
 
@@ -594,7 +594,6 @@ async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
 
-    // Get or create current chat
     let chat = chats.find(c => c.id === currentChatId);
     if (!chat) {
         chat = { id: Date.now(), title: "New conversation", messages: [] };
@@ -603,27 +602,33 @@ async function sendMessage() {
         renderSidebar();
     }
 
-    // Add user message to UI
+    // Add user message
     chat.messages.push({ role: 'user', content: text });
     appendMessage({ role: 'user', content: text });
 
-    // Update chat title if it's the first message
+    // Update title on first message
     if (chat.title === "New conversation" && chat.messages.length === 1) {
         chat.title = text.length > 32 ? text.slice(0, 32) + '…' : text;
         document.getElementById('chat-header-title').textContent = chat.title;
         renderSidebar();
     }
 
-    // Clear input
     input.value = '';
     input.style.height = 'auto';
 
-    // Show typing indicator
     isWaiting = true;
     showTyping();
 
     try {
-        // === THIS IS THE FETCH CALL TO YOUR BACKEND ===
+        // Prepare history in the format backend expects
+        const historyForBackend = chat.messages
+            .filter(msg => msg.role !== 'typing')  // safety
+            .map(msg => ({
+                question: msg.role === 'user' ? msg.content : "",
+                answer:   msg.role === 'assistant' ? msg.content : ""
+            }))
+            .filter(item => item.question || item.answer);   // remove empty
+
         const response = await fetch(`${API_BASE_URL}/ask`, {
             method: "POST",
             headers: {
@@ -632,7 +637,7 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 question: text,
-                history: []                    // ← We can improve this later to send full history
+                history: historyForBackend
             })
         });
 
@@ -642,7 +647,6 @@ async function sendMessage() {
 
         const data = await response.json();
 
-        // Remove typing and show real answer
         removeTyping();
 
         const assistantMsg = {
@@ -656,11 +660,11 @@ async function sendMessage() {
         appendMessage(assistantMsg);
 
     } catch (error) {
-        console.error("Error calling backend:", error);
+        console.error("Error:", error);
         removeTyping();
         appendMessage({
             role: 'assistant',
-            content: "Sorry, I couldn't reach the server. Please check your connection and try again.",
+            content: "Sorry, I couldn't connect to the server. Please try again.",
             score: 40,
             statement: "Connection error"
         });
@@ -668,7 +672,6 @@ async function sendMessage() {
         isWaiting = false;
     }
 }
-// ================================================================
 
     function closeSidebar() {
         if (window.innerWidth <= 768) {

@@ -436,6 +436,59 @@
             .message-content, .user-bubble { font-size: 13px; }
             .new-chat-btn { font-size: 13px; }
         }
+
+    /* Beautiful Sources Section */
+.sources-section {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.sources-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sources-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.source-box {
+    background: var(--border);
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.source-box a {
+    color: var(--accent);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.source-box:hover {
+    background: rgba(14, 165, 233, 0.15);
+    transform: translateX(4px);
+}
+
+.source-box a:hover {
+    text-decoration: underline;
+}
+
+/* Make sure links open in new tab properly */
+.message-content a {
+    color: var(--accent);
+    text-decoration: underline;
+}
     </style>
 </head>
 <body class="dark">
@@ -537,34 +590,69 @@
         container.scrollTop = container.scrollHeight;
     }
 
-    function appendMessage(msg, animate = true) {
-        const container = document.getElementById('messages-container');
-        const empty = container.querySelector('.empty-state');
-        if (empty) empty.remove();
+   function appendMessage(msg, animate = true) {
+    const container = document.getElementById('messages-container');
+    const empty = container.querySelector('.empty-state');
+    if (empty) empty.remove();
 
-        const row = document.createElement('div');
-        row.className = `message-row ${msg.role}`;
-        if (!animate) row.style.animation = 'none';
+    const row = document.createElement('div');
+    row.className = `message-row ${msg.role}`;
+    if (!animate) row.style.animation = 'none';
 
-        const inner = document.createElement('div');
-        inner.className = 'message-inner';
+    const inner = document.createElement('div');
+    inner.className = 'message-inner';
 
-        if (msg.role === 'assistant') {
-            inner.innerHTML = `
-                <div class="role-label">VORREX</div>
-                <div class="message-content">${msg.content.replace(/\n/g, '<br>')}</div>
-                <div class="assistant-meta">
-                    <span class="score-badge">● ${msg.score}%</span>
-                    <span class="confidence-stmt">${msg.statement}</span>
+    if (msg.role === 'assistant') {
+        // Clean the content and separate sources if present
+        let content = msg.content || '';
+        let sourcesHTML = '';
+
+        // Try to extract "Sources:" section if it exists
+        const sourcesIndex = content.toLowerCase().lastIndexOf('sources:');
+        if (sourcesIndex > -1) {
+            const mainAnswer = content.substring(0, sourcesIndex).trim();
+            const sourcesPart = content.substring(sourcesIndex).trim();
+
+            // Simple regex to find links (http/https)
+            const linkRegex = /(https?:\/\/[^\s]+)/g;
+            let sourcesList = sourcesPart.replace(/sources:/i, '').trim();
+
+            // Convert links to nice clickable boxes
+            sourcesList = sourcesList.replace(linkRegex, (url) => {
+                const domain = new URL(url).hostname.replace('www.', '');
+                return `<div class="source-box">
+                    <a href="${url}" target="_blank" rel="noopener noreferrer">
+                        🔗 ${domain}
+                    </a>
                 </div>`;
-        } else {
-            inner.innerHTML = `<div class="user-bubble">${msg.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+            });
+
+            content = mainAnswer;
+            sourcesHTML = `
+                <div class="sources-section">
+                    <div class="sources-label">Sources</div>
+                    <div class="sources-grid">
+                        ${sourcesList}
+                    </div>
+                </div>`;
         }
 
-        row.appendChild(inner);
-        container.appendChild(row);
-        container.scrollTop = container.scrollHeight;
+        inner.innerHTML = `
+            <div class="role-label">VORREX</div>
+            <div class="message-content">${content.replace(/\n/g, '<br>')}</div>
+            ${sourcesHTML}
+            <div class="assistant-meta">
+                <span class="score-badge">● ${msg.score}%</span>
+                <span class="confidence-stmt">${msg.statement}</span>
+            </div>`;
+    } else {
+        inner.innerHTML = `<div class="user-bubble">${msg.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
     }
+
+    row.appendChild(inner);
+    container.appendChild(row);
+    container.scrollTop = container.scrollHeight;
+}
 
     function showTyping() {
         const container = document.getElementById('messages-container');

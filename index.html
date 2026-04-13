@@ -586,79 +586,89 @@
         if (t) t.remove();
     }
 
-    // ================== REAL SEND MESSAGE FUNCTION ==================
-    async function sendMessage() {
-        if (isWaiting) return;
-        const input = document.getElementById('message-input');
-        const text = input.value.trim();
-        if (!text) return;
+// ================== REAL API CALL USING FETCH ==================
+async function sendMessage() {
+    if (isWaiting) return;
 
-        let chat = chats.find(c => c.id === currentChatId);
-        if (!chat) {
-            chat = { id: Date.now(), title: "New conversation", messages: [] };
-            chats.unshift(chat);
-            currentChatId = chat.id;
-            renderSidebar();
-        }
+    const input = document.getElementById('message-input');
+    const text = input.value.trim();
+    if (!text) return;
 
-        chat.messages.push({ role: 'user', content: text });
-        appendMessage({ role: 'user', content: text });
-
-        if (chat.title === "New conversation" && chat.messages.length === 1) {
-            chat.title = text.length > 32 ? text.slice(0, 32) + '…' : text;
-            document.getElementById('chat-header-title').textContent = chat.title;
-            renderSidebar();
-        }
-
-        input.value = '';
-        input.style.height = 'auto';
-        isWaiting = true;
-        showTyping();
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/ask`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-api-key": voorex-cool-2026
-                },
-                body: JSON.stringify({
-                    question: text,
-                    history: []   // Later we can send full history for better context
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            removeTyping();
-            const assistantMsg = {
-                role: 'assistant',
-                content: data.answer,
-                score: data.confidence_score,
-                statement: data.confidence_statement || "Processed successfully"
-            };
-
-            chat.messages.push(assistantMsg);
-            appendMessage(assistantMsg);
-
-        } catch (error) {
-            console.error("API Error:", error);
-            removeTyping();
-            appendMessage({
-                role: 'assistant',
-                content: "Sorry, I couldn't connect to the server right now. Please check your internet or try again later.",
-                score: 50,
-                statement: "Connection issue"
-            });
-        } finally {
-            isWaiting = false;
-        }
+    // Get or create current chat
+    let chat = chats.find(c => c.id === currentChatId);
+    if (!chat) {
+        chat = { id: Date.now(), title: "New conversation", messages: [] };
+        chats.unshift(chat);
+        currentChatId = chat.id;
+        renderSidebar();
     }
-    // ================================================================
+
+    // Add user message to UI
+    chat.messages.push({ role: 'user', content: text });
+    appendMessage({ role: 'user', content: text });
+
+    // Update chat title if it's the first message
+    if (chat.title === "New conversation" && chat.messages.length === 1) {
+        chat.title = text.length > 32 ? text.slice(0, 32) + '…' : text;
+        document.getElementById('chat-header-title').textContent = chat.title;
+        renderSidebar();
+    }
+
+    // Clear input
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator
+    isWaiting = true;
+    showTyping();
+
+    try {
+        // === THIS IS THE FETCH CALL TO YOUR BACKEND ===
+        const response = await fetch(`${API_BASE_URL}/ask`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": VORREX_API_KEY
+            },
+            body: JSON.stringify({
+                question: text,
+                history: []                    // ← We can improve this later to send full history
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Remove typing and show real answer
+        removeTyping();
+
+        const assistantMsg = {
+            role: 'assistant',
+            content: data.answer,
+            score: data.confidence_score,
+            statement: data.confidence_statement || "Processed successfully"
+        };
+
+        chat.messages.push(assistantMsg);
+        appendMessage(assistantMsg);
+
+    } catch (error) {
+        console.error("Error calling backend:", error);
+        removeTyping();
+        appendMessage({
+            role: 'assistant',
+            content: "Sorry, I couldn't reach the server. Please check your connection and try again.",
+            score: 40,
+            statement: "Connection error"
+        });
+    } finally {
+        isWaiting = false;
+    }
+}
+// ================================================================
 
     function closeSidebar() {
         if (window.innerWidth <= 768) {

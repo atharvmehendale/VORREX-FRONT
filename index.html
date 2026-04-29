@@ -635,9 +635,16 @@
     let isWaiting = false;
 
     // ================== CONFIGURE THESE TWO LINES ==================
-    const API_BASE_URL = "https://vorrex.onrender.com";   // ← CHANGE THIS
-    const VORREX_API_KEY = "vorrex-cool-2026";               // ← CHANGE THIS (same as on Render)
+    const API_BASE_URL = "https://vorrex.onrender.com";   // ← CHANGE THIS to Railway URL
+    const VORREX_API_KEY = "vorrex-cool-2026";            // ← CHANGE THIS (same as on Railway)
     // ================================================================
+
+    // Persistent user ID — generated once, stored in localStorage
+    let userId = localStorage.getItem("vorrex_user_id");
+    if (!userId) {
+        userId = "user_" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("vorrex_user_id", userId);
+    }
 
     function renderSidebar() {
         const container = document.getElementById('sidebar-content');
@@ -811,7 +818,8 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 question: text,
-                history: historyForBackend
+                history:  historyForBackend,
+                user_id:  userId
             })
         });
 
